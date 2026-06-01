@@ -1,0 +1,109 @@
+name: 'Kotlin Toolchain Cache'
+description: >-
+  Cache the Kotlin Toolchain bootstrap, JDKs/toolchains, Maven & Kotlin
+  dependencies, build outputs and (optionally) the Kotlin/Native (konan) toolchains
+  for any project using the Kotlin Toolchain (https://kotlin-toolchain.org/).
+author: 'sureshg'
+
+branding:
+  icon: 'layers'
+  color: 'purple'
+
+inputs:
+  kotlin-cache-dir:
+    description: 'Kotlin Toolchain Cache directory.'
+    default: '${{ github.workspace }}/.kotlin'
+  konan:
+    description: 'Cache ~/.konan for Kotlin Multiplatform / Native projects.'
+    default: 'false'
+  cache-build-outputs:
+    description: 'Cache `build/` outputs (excluding `build/logs`).'
+    default: 'true'
+  export-env:
+    description: 'Export the cache dirs to GITHUB_ENV for later `./kotlin` steps.'
+    default: 'true'
+
+outputs:
+  bootstrap-cache-hit:
+    description: 'Exact match for the Kotlin CLI bootstrap cache.'
+    value: ${{ steps.bootstrap.outputs.cache-hit }}
+  downloads-cache-hit:
+    description: 'Exact match for the toolchains & JDKs cache.'
+    value: ${{ steps.downloads.outputs.cache-hit }}
+  dependencies-cache-hit:
+    description: 'Exact match for the Maven & Kotlin dependencies cache.'
+    value: ${{ steps.dependencies.outputs.cache-hit }}
+  build-cache-hit:
+    description: 'Exact match for the build outputs cache.'
+    value: ${{ steps.build-outputs.outputs.cache-hit }}
+  konan-cache-hit:
+    description: 'Exact match for the Kotlin/Native (konan) cache.'
+    value: ${{ steps.konan.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: ⚙️ Export Kotlin cache env
+      if: ${{ inputs.export-env == 'true' }}
+      shell: bash
+      run: |
+        {
+          echo "KOTLIN_CLI_BOOTSTRAP_CACHE_DIR=${{ inputs.kotlin-cache-dir }}/boot-cache"
+          echo "KOTLIN_SHARED_CACHE_DIR=${{ inputs.kotlin-cache-dir }}/shared-cache"
+        } >> "$GITHUB_ENV"
+
+    - name: ⚡ Cache Kotlin CLI bootstrap
+      id: bootstrap
+      uses: actions/cache@v5
+      with:
+        path: ${{ inputs.kotlin-cache-dir }}/boot-cache
+        key: kotlin-boot-${{ runner.os }}-${{ hashFiles('kotlin', 'kotlin.bat') }}
+
+    - name: 🛠️ Cache toolchains & JDKs
+      id: downloads
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ inputs.kotlin-cache-dir }}/shared-cache/download.cache
+          ${{ inputs.kotlin-cache-dir }}/shared-cache/extract.cache
+        key: kotlin-downloads-${{ runner.os }}-${{ hashFiles('project.yaml', '**/module.yaml', '**/plugin.yaml', 'kotlin', 'kotlin.bat', 'libs.versions.toml') }}
+        restore-keys: kotlin-downloads-${{ runner.os }}-
+
+    - name: 📦 Cache Maven & Kotlin dependencies
+      id: dependencies
+      uses: actions/cache@v5
+      with:
+        path: |
+          ${{ inputs.kotlin-cache-dir }}/shared-cache/.m2.cache
+          ${{ inputs.kotlin-cache-dir }}/shared-cache/kotlin
+        enableCrossOsArchive: true
+        key: kotlin-deps-${{ hashFiles('project.yaml', '**/module.yaml', '**/plugin.yaml', 'kotlin', 'kotlin.bat', 'libs.versions.toml') }}
+        restore-keys: kotlin-deps-
+
+    - name: 🗂️ Cache build outputs
+      id: build-outputs
+      if: ${{ inputs.cache-build-outputs == 'true' }}
+      uses: actions/cache@v5
+      with:
+        path: |
+          build/*
+          !build/logs
+        key: kotlin-build-${{ runner.os }}-${{ hashFiles('project.yaml', '**/module.yaml', '**/plugin.yaml', 'kotlin', 'kotlin.bat', 'libs.versions.toml') }}
+        restore-keys: kotlin-build-${{ runner.os }}-
+
+    - name: 🅺 Resolve Kotlin version
+      id: kotlin-version
+      if: ${{ inputs.konan == 'true' }}
+      shell: bash
+      run: |
+        version="$(grep -E '^\s*kotlin\s*=' libs.versions.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+        echo "version=${version:-konan}" >> "$GITHUB_OUTPUT"
+
+    - name: 🧬 Cache Kotlin/Native (konan)
+      id: konan
+      if: ${{ inputs.konan == 'true' }}
+      uses: actions/cache@v5
+      with:
+        path: ~/.konan
+        key: kotlin-konan-${{ runner.os }}-${{ steps.kotlin-version.outputs.version }}
+        restore-keys: kotlin-konan-${{ runner.os }}-
