@@ -4,8 +4,8 @@ Reusable GitHub Actions for [Kotlin Toolchain](https://kotlin-toolchain.org/) pr
 
 ## Actions
 
-| Action | Description |
-|---|---|
+| Action                                             | Description                                                                                                  |
+|----------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
 | [`kotlin-toolchain-cache`](kotlin-toolchain-cache) | Caches the Kotlin Toolchain bootstrap, JDKs/toolchains, dependencies, build outputs and (opt-in) `~/.konan`. |
 
 ### Usage
